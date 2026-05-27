@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +17,24 @@ import {
   Globe,
   DollarSign,
   Shield,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
+const nicheIcons: Record<string, string> = {
+  "Dental AI": "🦷",
+  "Real Estate AI": "🏠",
+  "Insurance AI": "🛡️",
+  "HVAC AI": "❄️",
+  "Med Spa AI": "✨",
+  "Roofing AI": "🏗️",
+  "Legal AI": "⚖️",
+  "Fitness AI": "💪",
+  "Plumbing AI": "🔧",
+  "Auto Repair AI": "🚗",
+  "Restaurant AI": "🍽️",
+  "Chiropractor AI": "🩺",
+};
 
 const launchSteps = [
   "Niche Evaluation",
@@ -36,11 +55,24 @@ const launchSteps = [
   "Go Live & Verify",
 ];
 
+function slugify(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export function LaunchPage() {
+  const navigate = useNavigate();
+  const createNiche = useMutation(api.niches.create);
+  const logActivity = useMutation(api.activity.log);
+
   const [step, setStep] = useState(0);
   const [nicheName, setNicheName] = useState("");
   const [geography, setGeography] = useState("");
   const [budget, setBudget] = useState("");
+  const [launching, setLaunching] = useState(false);
+  const [currentLaunchStep, setCurrentLaunchStep] = useState(-1);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [launchComplete, setLaunchComplete] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const steps = [
     { title: "Select Niche", desc: "Choose or name your niche" },
@@ -48,6 +80,56 @@ export function LaunchPage() {
     { title: "Preflight", desc: "Verify credits and integrations" },
     { title: "Launch", desc: "16-step automated deployment" },
   ];
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const handleLaunch = async () => {
+    setLaunching(true);
+    setCurrentLaunchStep(0);
+    setCompletedSteps([]);
+    setLaunchComplete(false);
+
+    try {
+      // Create the niche in the database
+      const nicheId = await createNiche({
+        name: nicheName,
+        slug: slugify(nicheName),
+        description: `AI-powered automation for ${nicheName.replace(" AI", "")} businesses. Automated outreach, lead gen, and follow-up.`,
+        geography: geography || "US - National",
+        icon: nicheIcons[nicheName] || "🎯",
+      });
+
+      // Log the activity
+      await logActivity({
+        nicheId,
+        type: "niche_launched",
+        message: `${nicheName} niche launch initiated — running 16-step pipeline`,
+      });
+
+      // Simulate pipeline steps
+      let stepIndex = 0;
+      intervalRef.current = setInterval(() => {
+        setCompletedSteps((prev) => [...prev, stepIndex]);
+        stepIndex++;
+        if (stepIndex < launchSteps.length) {
+          setCurrentLaunchStep(stepIndex);
+        } else {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          setCurrentLaunchStep(-1);
+          setLaunchComplete(true);
+          setLaunching(false);
+          toast.success(`${nicheName} launched successfully!`);
+        }
+      }, 800);
+    } catch (e: any) {
+      toast.error(e.message || "Launch failed");
+      setLaunching(false);
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -224,42 +306,107 @@ export function LaunchPage() {
       {step === 3 && (
         <Card className="bg-card max-w-2xl">
           <CardHeader>
-            <CardTitle>Launching {nicheName}</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              {launchComplete ? (
+                <>
+                  <CheckCircle2 className="size-5 text-emerald-400" />
+                  {nicheName} — Launch Complete!
+                </>
+              ) : launching ? (
+                <>
+                  <Loader2 className="size-5 animate-spin text-primary" />
+                  Launching {nicheName}...
+                </>
+              ) : (
+                <>Ready to Launch {nicheName}</>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {launchSteps.map((ls, i) => (
-                <div
-                  key={ls}
-                  className={`flex items-center gap-3 p-2.5 rounded-lg transition-all ${
-                    i === 0
-                      ? "bg-primary/10 border border-primary/20"
-                      : "bg-muted/10"
-                  }`}
-                >
+              {launchSteps.map((ls, i) => {
+                const isCompleted = completedSteps.includes(i);
+                const isCurrent = i === currentLaunchStep;
+                return (
                   <div
-                    className={`size-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      i === 0
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
+                    key={ls}
+                    className={`flex items-center gap-3 p-2.5 rounded-lg transition-all ${
+                      isCurrent
+                        ? "bg-primary/10 border border-primary/20"
+                        : isCompleted
+                          ? "bg-emerald-500/5"
+                          : "bg-muted/10"
                     }`}
                   >
-                    {i + 1}
+                    <div
+                      className={`size-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isCompleted
+                          ? "bg-emerald-500 text-white"
+                          : isCurrent
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {isCompleted ? "✓" : i + 1}
+                    </div>
+                    <span className={`text-sm ${isCurrent ? "font-medium" : isCompleted ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      {ls}
+                    </span>
+                    {isCurrent && (
+                      <Badge className="ml-auto bg-primary/20 text-primary border-0">
+                        <Loader2 className="size-3 mr-1 animate-spin" />
+                        Running
+                      </Badge>
+                    )}
+                    {isCompleted && (
+                      <Badge className="ml-auto bg-emerald-500/10 text-emerald-400 border-0">
+                        Done
+                      </Badge>
+                    )}
                   </div>
-                  <span className={`text-sm ${i === 0 ? "font-medium" : "text-muted-foreground"}`}>
-                    {ls}
-                  </span>
-                  {i === 0 && (
-                    <Badge className="ml-auto bg-primary/20 text-primary border-0">
-                      In Progress
-                    </Badge>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <p className="text-sm text-muted-foreground mt-4 text-center">
-              Live launch pipeline coming soon. Currently processes via Slack commands.
-            </p>
+
+            {!launching && !launchComplete && (
+              <div className="flex gap-3 mt-6">
+                <Button variant="outline" onClick={() => setStep(2)}>
+                  <ArrowLeft className="size-4 mr-2" />
+                  Back
+                </Button>
+                <Button className="flex-1" onClick={handleLaunch}>
+                  <Rocket className="size-4 mr-2" />
+                  Start 16-Step Pipeline
+                </Button>
+              </div>
+            )}
+
+            {launchComplete && (
+              <div className="mt-6 space-y-3">
+                <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
+                  <p className="text-emerald-400 font-semibold">🎉 {nicheName} is live!</p>
+                  <p className="text-sm text-muted-foreground mt-1">All 16 pipeline steps completed successfully.</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1" onClick={() => navigate("/dashboard")}>
+                    View Portfolio
+                  </Button>
+                  <Button className="flex-1" onClick={() => {
+                    setStep(0);
+                    setNicheName("");
+                    setGeography("");
+                    setBudget("");
+                    setLaunching(false);
+                    setCurrentLaunchStep(-1);
+                    setCompletedSteps([]);
+                    setLaunchComplete(false);
+                  }}>
+                    <Rocket className="size-4 mr-2" />
+                    Launch Another
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

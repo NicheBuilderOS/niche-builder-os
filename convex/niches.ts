@@ -75,6 +75,32 @@ export const updateStatus = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("niches") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    // Delete associated leads
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_niche", (q) => q.eq("nicheId", id))
+      .collect();
+    for (const lead of leads) {
+      await ctx.db.delete(lead._id);
+    }
+    // Delete associated activity
+    const activities = await ctx.db
+      .query("activityLog")
+      .withIndex("by_niche", (q) => q.eq("nicheId", id))
+      .collect();
+    for (const act of activities) {
+      await ctx.db.delete(act._id);
+    }
+    // Delete niche
+    await ctx.db.delete(id);
+    return null;
+  },
+});
+
 export const portfolioStats = query({
   args: {},
   returns: v.any(),

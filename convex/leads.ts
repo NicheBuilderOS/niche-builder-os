@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
 export const byNiche = query({
   args: { nicheId: v.id("niches") },
@@ -29,5 +29,51 @@ export const pipelineStats = query({
       .filter((l) => l.stage === "closed")
       .reduce((s, l) => s + l.value, 0);
     return { stages, totalValue, total: leads.length };
+  },
+});
+
+export const create = mutation({
+  args: {
+    nicheId: v.id("niches"),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    source: v.string(),
+    stage: v.union(
+      v.literal("new"),
+      v.literal("qualified"),
+      v.literal("demo"),
+      v.literal("proposal"),
+      v.literal("closed"),
+      v.literal("lost"),
+    ),
+    value: v.number(),
+    notes: v.optional(v.string()),
+  },
+  returns: v.id("leads"),
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("leads", {
+      ...args,
+      createdAt: new Date().toISOString(),
+    });
+  },
+});
+
+export const updateStage = mutation({
+  args: {
+    id: v.id("leads"),
+    stage: v.union(
+      v.literal("new"),
+      v.literal("qualified"),
+      v.literal("demo"),
+      v.literal("proposal"),
+      v.literal("closed"),
+      v.literal("lost"),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, { id, stage }) => {
+    await ctx.db.patch(id, { stage });
+    return null;
   },
 });

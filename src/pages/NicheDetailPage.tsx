@@ -1,5 +1,5 @@
-import { useQuery } from "convex/react";
-import { useParams, Link } from "react-router-dom";
+import { useQuery, useMutation } from "convex/react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useState } from "react";
 
 const gradeColors: Record<string, string> = {
   A: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
@@ -73,6 +74,7 @@ function FunnelBar({ stage, count, total }: { stage: string; count: number; tota
 
 export function NicheDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const niche = useQuery(api.niches.getBySlug, { slug: slug ?? "" });
   const leads = useQuery(
     api.leads.byNiche,
@@ -86,6 +88,12 @@ export function NicheDetailPage() {
     api.activity.byNiche,
     niche?._id ? { nicheId: niche._id } : "skip",
   );
+
+  const updateStatus = useMutation(api.niches.updateStatus);
+  const removeNiche = useMutation(api.niches.remove);
+  const logActivity = useMutation(api.activity.log);
+
+  const [confirmKill, setConfirmKill] = useState(false);
 
   if (niche === undefined) {
     return (
@@ -113,6 +121,36 @@ export function NicheDetailPage() {
       </div>
     );
   }
+
+  const handlePause = async () => {
+    try {
+      await updateStatus({ id: niche._id, status: "paused" });
+      await logActivity({ nicheId: niche._id, type: "niche_paused", message: `${niche.name} paused` });
+      toast.success(`${niche.name} paused`);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await updateStatus({ id: niche._id, status: "active" });
+      await logActivity({ nicheId: niche._id, type: "system", message: `${niche.name} resumed` });
+      toast.success(`${niche.name} resumed`);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleKill = async () => {
+    try {
+      await removeNiche({ id: niche._id });
+      toast.success(`${niche.name} removed`);
+      navigate("/dashboard");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -144,21 +182,32 @@ export function NicheDetailPage() {
         </div>
         <div className="flex gap-2">
           {niche.status === "active" && (
-            <Button variant="outline" size="sm" onClick={() => toast.info("Feature coming soon")}>
+            <Button variant="outline" size="sm" onClick={handlePause}>
               <Pause className="size-4 mr-1" />
               Pause
             </Button>
           )}
-          {niche.status === "paused" && (
-            <Button variant="outline" size="sm" onClick={() => toast.info("Feature coming soon")}>
+          {(niche.status === "paused" || niche.status === "evaluating" || niche.status === "launching") && (
+            <Button variant="outline" size="sm" onClick={handleResume}>
               <Play className="size-4 mr-1" />
-              Resume
+              {niche.status === "paused" ? "Resume" : "Activate"}
             </Button>
           )}
-          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => toast.info("Feature coming soon")}>
-            <Trash2 className="size-4 mr-1" />
-            Kill
-          </Button>
+          {confirmKill ? (
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" className="text-destructive border-destructive/30" onClick={handleKill}>
+                Confirm Delete
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setConfirmKill(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setConfirmKill(true)}>
+              <Trash2 className="size-4 mr-1" />
+              Kill
+            </Button>
+          )}
         </div>
       </div>
 
