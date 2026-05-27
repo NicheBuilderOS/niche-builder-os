@@ -1,11 +1,7 @@
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth, getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
-import { TestCredentials } from "./testAuth";
-import {
-  ViktorSpacesEmail,
-  ViktorSpacesPasswordReset,
-} from "./ViktorSpacesEmail";
+import { DirectCredentials } from "./directAuth";
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -36,18 +32,12 @@ if (jwtPrivateKey) {
   process.env.JWT_PRIVATE_KEY = decodePrivateKey(jwtPrivateKey);
 }
 
-// Only register the @test.local credentials provider on preview/dev Convex
-// deployments. `VIKTOR_SPACES_IS_PREVIEW` is set per-deployment by the Viktor
-// Spaces backend (true on dev, false on prod). On production it is "false" or
-// unset, so the test provider is omitted entirely and `signIn("test", ...)`
-// fails with "Provider not configured".
+// Use DirectCredentials for immediate password-based signup/login
+// (no email verification required). Password provider kept as fallback.
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
-    Password({
-      verify: ViktorSpacesEmail,
-      reset: ViktorSpacesPasswordReset,
-    }),
-    ...(process.env.VIKTOR_SPACES_IS_PREVIEW === "true" ? [TestCredentials] : []),
+    Password,
+    DirectCredentials,
   ],
 });
 
